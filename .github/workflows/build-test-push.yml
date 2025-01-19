@@ -145,12 +145,12 @@ jobs:
           # list of tags
           tags: |
             # Default image tags
-            type=raw,value=latest,enable=${{ matrix.image_types == 'default' }}
+            type=raw,value=latest,enable=${{ matrix.image_types == 'default' && inputs.version_major == env.version_latest }}
             type=raw,value=${{ inputs.version_major }},enable=${{ matrix.image_types == 'default' }}
             type=raw,value=${{ inputs.version_major }}${{ env.version_minor }},enable=${{ matrix.image_types == 'default' }}
             type=raw,value=${{ inputs.version_major }}${{ env.version_minor }}-${{ env.date_stamp }},enable=${{ matrix.image_types == 'default' }}
             # Minimal image tags
-            type=raw,value=${{ matrix.image_types }},enable=${{ matrix.image_types == 'minimal' }}
+            type=raw,value=minimal,enable=${{ matrix.image_types == 'minimal' && inputs.version_major == env.version_latest }}
             type=raw,value=${{ inputs.version_major }}-${{ matrix.image_types }},enable=${{ matrix.image_types == 'minimal' }}
             type=raw,value=${{ inputs.version_major }}${{ env.version_minor }}-${{ matrix.image_types }},enable=${{ matrix.image_types == 'minimal' }}
             type=raw,value=${{ inputs.version_major }}${{ env.version_minor }}-${{ matrix.image_types }}-${{ env.date_stamp }},enable=${{ matrix.image_types == 'minimal' }}
