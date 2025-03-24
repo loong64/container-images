@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
       inputs:
         version_major:
-          description: 'OpenCloudOS major version'
+          description: 'Anolis major version'
           required: true
           default: '23'
 
@@ -45,13 +45,13 @@ jobs:
     steps:
 
       -
-        name: Prepare OpenCloudOS Minor version number
+        name: Prepare Anolis Minor version number
         run: |
           case ${{ inputs.version_major }} in
             23)
-              version_minor= ;;
+              version_minor=.2 ;;
             *)
-              echo "OpenCloudOS ${{ inputs.version_major }} is not supported!" && false
+              echo "Anolis ${{ inputs.version_major }} is not supported!" && false
           esac
           echo "version_minor=${version_minor}" >> $GITHUB_ENV
 
@@ -78,11 +78,11 @@ jobs:
           REGISTRIES="${{ env.registries }}"
 
           IMAGE_NAMES=
-          # generate image names in format $REGISTRY/opencloudos
+          # generate image names in format $REGISTRY/anolis
           # image names are used by docker/metadata-action to set 'images'
           for REGISTRY in ${REGISTRIES//,/ }; do
-            # 'default' images goes to $REGISTRY/opencloudos
-            IMAGE_NAME="$REGISTRY/opencloudos"
+            # 'default' images goes to $REGISTRY/anolis
+            IMAGE_NAME="$REGISTRY/anolis"
             IMAGE_NAMES="${IMAGE_NAMES} ${IMAGE_NAME}"
             unset IMAGE_NAME
           done
@@ -175,11 +175,11 @@ jobs:
           # [Test]
           platforms="${{ env.platforms }}"
           for platform in ${platforms//,/ }; do
-            echo "Testing OpenCloudOS ${{ inputs.version_major }} ${{ matrix.image_types }} for ${platform} image:"
+            echo "Testing Anolis ${{ inputs.version_major }} ${{ matrix.image_types }} for ${platform} image:"
 
             docker run --platform=${platform} ${{ steps.build-images.outputs.digest }} /bin/bash -c " \
             uname -m \
-            && cat /etc/opencloudos-release \
+            && cat /etc/anolis-release \
             && ( test "${{ matrix.image_types }}" != "micro" && rpm -q gpg-pubkey) || true "
           done
 
@@ -204,10 +204,10 @@ jobs:
           # [RootFS]
 
           # File name for RootFS file (packed with tag + Xz)
-          name=opencloudos-${{ inputs.version_major }}-${{ matrix.image_types }}
+          name=anolis-${{ inputs.version_major }}-${{ matrix.image_types }}
           pwd=$( pwd )
           path=${pwd}/${name}
-          opencloudos_release='bash'
+          anolis_release='bash'
 
           # The "tar file" for 'docker save' to write to
           tar_name=${pwd}/${name}.tar
@@ -238,8 +238,8 @@ jobs:
               # Build an image from the "temporary Dockerfile"
               docker build -t rootfs .
 
-              # Run the image and query opencloudos-release package's architecture
-              arch=$( docker run --rm rootfs /bin/bash -c "rpm -q --qf=%{ARCH} ${opencloudos_release}" )
+              # Run the image and query anolis-release package's architecture
+              arch=$( docker run --rm rootfs /bin/bash -c "rpm -q --qf=%{ARCH} ${anolis_release}" )
 
               # Map found architecture to the corresponding platform
               platform=
@@ -322,7 +322,7 @@ jobs:
           new_branch: ${{ inputs.version_major }}
           cwd: ${{ inputs.version_major }}
           pull: '--rebase --autostash'
-          message: "OpenCloudOS ${{ inputs.version_major }} ${{ matrix.image_types }} - ${{ env.date_stamp }} ${{ env.time_stamp }} (generated on ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          message: "Anolis ${{ inputs.version_major }} ${{ matrix.image_types }} - ${{ env.date_stamp }} ${{ env.time_stamp }} (generated on ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           push: true
 
     outputs:
@@ -383,6 +383,6 @@ jobs:
         uses: EndBug/add-and-commit@v9
         with:
           default_author: user_info
-          message: "Update OpenCloudOS ${{ inputs.version_major }} - ${{ needs.build-test-push.outputs.date_stamp }} ${{ needs.build-test-push.outputs.time_stamp }} (generated on ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          message: "Update Anolis ${{ inputs.version_major }} - ${{ needs.build-test-push.outputs.date_stamp }} ${{ needs.build-test-push.outputs.time_stamp }} (generated on ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
           push: '--force --set-upstream origin ${{ inputs.version_major }}'
           cwd: ${{ inputs.version_major }}

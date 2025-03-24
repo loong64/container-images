@@ -1,26 +1,26 @@
-ARG SYSBASE=ghcr.io/loong64/opencloudos:23-stream-20241216
+ARG SYSBASE=ghcr.io/loong64/anolis:23-stream-20241216
 FROM ${SYSBASE} as system-build
 
 RUN mkdir /mnt/sys-root; \
     dnf install -y \
     --installroot /mnt/sys-root \
-    --releasever 23 \
+    --releasever 23.2 \
     --setopt install_weak_deps=false \
     --nodocs \
-    opencloudos-stream-release \
+    anolis-release \
     bash \
-    coreutils \
-    curl \
-    glibc \
-    libcurl \
+    coreutils-single \
+    curl-minimal \
+    glibc-minimal-langpack \
+    libcurl-minimal \
     libusbx \
-    yum \
+    microdnf \
     rootfiles \
     ; \
     echo '%_install_langs en_US.UTF-8' > /etc/rpm/macros.image-language-conf ;\
     dnf reinstall -y \
     --installroot /mnt/sys-root \
-    --releasever 23 \
+    --releasever 23.2 \
     --setopt install_weak_deps=false \
     --nodocs \
     krb5-libs ; \
