@@ -7,21 +7,33 @@ RUN mkdir /mnt/sys-root; \
     --releasever 23.2 \
     --setopt install_weak_deps=false \
     --nodocs \
+    acl \
     anolis-release \
+    attr \
     bash \
     binutils \
     coreutils-single \
     crypto-policies-scripts \
     curl-minimal \
     findutils \
+    gzip \
     hostname \
     iputils \
     glibc-minimal-langpack \
+    keyutils \
     krb5-libs \
     less \
     libcurl-minimal \
+    libdb \
+    libevent \
+    libreport-filesystem \
+    openssl \
+    pcre \
+    policycoreutils \
     rootfiles \
+    rpm-plugin-selinux \
     systemd \
+    systemd-rpm-macros \
     tar \
     vim-minimal \
     yum \
@@ -72,9 +84,11 @@ RUN mkdir -p /mnt/sys-root/var/cache/private /mnt/sys-root/var/lib/private /mnt/
     useradd -R '/mnt/sys-root/' -r -c 'systemd Userspace OOM Killer' -g 995 -u 995 -s '/usr/sbin/nologin' -M -d '/' systemd-oom ; \
     sed -i "/sgx/d" /mnt/sys-root/etc/group- ; \
     sed -i "/sgx/d" /mnt/sys-root/etc/gshadow- ; \
+    sed -i '/^ID=/a\ID_LIKE="rhel centos fedora"' /mnt/sys-root/etc/os-release ; \
     cd /mnt/sys-root/etc ; \
     ln -s ../usr/share/zoneinfo/UTC localtime ;
 
+ADD anolis-crb.repo /mnt/sys-root/etc/yum.repos.d/
 # Almalinux default build
 FROM scratch as stage2
 COPY --from=system-build /mnt/sys-root/ /
