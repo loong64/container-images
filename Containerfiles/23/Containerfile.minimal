@@ -4,7 +4,7 @@ FROM ${SYSBASE} as system-build
 RUN mkdir /mnt/sys-root; \
     dnf install -y \
     --installroot /mnt/sys-root \
-    --releasever 23.2 \
+    --releasever 23.3 \
     --setopt install_weak_deps=false \
     --nodocs \
     anolis-release \
@@ -20,7 +20,7 @@ RUN mkdir /mnt/sys-root; \
     echo '%_install_langs en_US.UTF-8' > /etc/rpm/macros.image-language-conf ;\
     dnf reinstall -y \
     --installroot /mnt/sys-root \
-    --releasever 23.2 \
+    --releasever 23.3 \
     --setopt install_weak_deps=false \
     --nodocs \
     krb5-libs ; \

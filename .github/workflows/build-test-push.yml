@@ -49,7 +49,7 @@ jobs:
         run: |
           case ${{ inputs.version_major }} in
             23)
-              version_minor=.2 ;;
+              version_minor=.3 ;;
             *)
               echo "Anolis ${{ inputs.version_major }} is not supported!" && false
           esac
