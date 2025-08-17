@@ -1,57 +1,42 @@
-ARG SYSBASE=ghcr.io/loong64/anolis:23-stream-20241216
+ARG SYSBASE=ghcr.io/loong64/opencloudos:9
 FROM ${SYSBASE} AS system-build
 
 RUN mkdir /mnt/sys-root; \
     dnf install -y \
     --installroot /mnt/sys-root \
-    --releasever 23.3 \
+    --releasever 9 \
     --setopt install_weak_deps=false \
     --nodocs \
-    anolis-release \
-    attr \
+    opencloudos-release \
     bash \
-    binutils \
     coreutils-single \
-    crypto-policies-scripts \
     curl-minimal \
-    findutils \
-    hostname \
-    iputils \
-    jansson \
-    glibc-minimal-langpack \
-    gzip \
-    keyutils \
-    krb5-libs \
-    less \
+    glibc-common \
     libcurl-minimal \
+    libusbx \
+    microdnf \
+    util-linux \
     rootfiles \
-    systemd \
-    tar \
-    vim-minimal \
-    yum \
-    xz \
     ; \
     echo '%_install_langs en_US.UTF-8' > /etc/rpm/macros.image-language-conf ;\
     dnf reinstall -y \
     --installroot /mnt/sys-root \
-    --releasever 23.3 \
+    --releasever 9 \
     --setopt install_weak_deps=false \
     --nodocs \
     krb5-libs ; \
     dnf --installroot /mnt/sys-root clean all;
-# Additional hacks for kickstart file and backward compatible support   /mnt/sys-root/var/lib/dnf/history*
-RUN rm -rf /mnt/sys-root/var/log/dnf* /mnt/sys-root/var/log/yum.* /mnt/sys-root/usr/share/i18n/charmaps /mnt/sys-root/usr/share/i18n/locales ; \
-    rm -rf /mnt/sys-root/var/cache/dnf/* /mnt/sys-root/var/lib/dnf/repos /mnt/sys-root/boot /mnt/sys-root/dev/null ; \
-    rm -rf /mnt/sys-root/var/log/hawkey.log /mnt/sys-root/var/log/*  ; \
+# Additional hacks for kickstart file and backward compatable support
+RUN rm -rf /mnt/sys-root/var/log/dnf* /mnt/sys-root/var/log/yum.* /mnt/sys-root/var/cache/dnf /mnt/sys-root/var/lib/dnf/repos; \
+    rm -rf /mnt/sys-root/var/lib/dnf/history* /mnt/sys-root/var/log/hawkey.log /mnt/sys-root/boot /mnt/sys-root/dev/null /mnt/sys-root/run/*; \
     mkdir -p /mnt/sys-root/run/lock; \
+    # generate build time file for compatibility with CentOS
     /bin/date +%Y%m%d_%H%M > /mnt/sys-root/etc/BUILDTIME; \
     echo '%_install_langs C.utf8' > /mnt/sys-root/etc/rpm/macros.image-language-conf; \
     echo 'LANG="C.utf8"' >  /mnt/sys-root/etc/locale.conf; \
     echo 'container' > /mnt/sys-root/etc/dnf/vars/infra; \
     touch /mnt/sys-root/etc/.pwd.lock; \
     chmod 600 /mnt/sys-root/etc/.pwd.lock; \
-    touch /mnt/sys-root/run/utmp ;\
-    chmod 664 /mnt/sys-root/run/utmp ;\
     echo '0.0 0 0.0' > /mnt/sys-root/etc/adjtime; \
     echo '0' >> /mnt/sys-root/etc/adjtime; \
     echo 'UTC' >> /mnt/sys-root/etc/adjtime; \
@@ -60,44 +45,30 @@ RUN rm -rf /mnt/sys-root/var/log/dnf* /mnt/sys-root/var/log/yum.* /mnt/sys-root/
     echo 'PERMITROOTLOGIN="-oPermitRootLogin=yes"' >> /mnt/sys-root/etc/sysconfig/sshd-permitrootlogin ;\
     echo 'KEYMAP="us"' > /mnt/sys-root/etc/vconsole.conf; \
     echo 'FONT="eurlatgr"' >> /mnt/sys-root/etc/vconsole.conf; \
-    rm -rf /mnt/sys-root/usr/share/locale/en_US@piglati* /mnt/sys-root/run/blkid /mnt/sys-root/var/cache/dnf/.gpgkeyschecked.yum ; \
+    # /mnt/sys-root/usr/share/locale/en@* /mnt/sys-root/usr/share/locale/en  /mnt/sys-root/usr/share/locale/en*@*
+    rm -rf /mnt/sys-root/usr/share/locale/en_CA/ /mnt/sys-root/usr/share/locale/en_GB/ /mnt/sys-root/usr/share/i18n/charmaps /mnt/sys-root/usr/share/i18n/locales ;\
     rm -f /mnt/sys-root/etc/machine-id; \
     touch /mnt/sys-root/etc/machine-id; \
     touch /mnt/sys-root/etc/resolv.conf; \
-    touch /mnt/sys-root/etc/hostname
-# AL10 specific hacks
-RUN mkdir -p /mnt/sys-root/var/cache/private /mnt/sys-root/var/lib/private /mnt/sys-root/var/lib/systemd/coredump /mnt/sys-root/var/lib/tpm2-tss/system/keystore ;\
-    mkdir -p /mnt/sys-root/run/cryptsetup /mnt/sys-root/run/lock/subsys /mnt/sys-root/run/log /mnt/sys-root/run/user /mnt/sys-root/run/tpm2-tss/eventlog ;\
-    mkdir -p /mnt/sys-root/run/systemd/ask-password /mnt/sys-root/run/systemd/machines /mnt/sys-root/run/systemd/seats /mnt/sys-root/run/systemd/sessions /mnt/sys-root/run/systemd/shutdown /mnt/sys-root/run/systemd/users ;\
+    touch /mnt/sys-root/etc/hostname; \
+    mkdir -p /mnt/sys-root/var/cache/private /mnt/sys-root/var/lib/private /mnt/sys-root/var/lib/systemd/coredump ;\
     chmod 700 /mnt/sys-root/var/cache/private ; \
     chmod 700 /mnt/sys-root/var/lib/private ; \
-    chmod 700 /mnt/sys-root/run/cryptsetup ; \
     groupadd -R '/mnt/sys-root/' -r -p '!*' -g 996 sgx && groupadd -R '/mnt/sys-root/' -r -p '!*' -g 995 systemd-oom ; \
     useradd -R '/mnt/sys-root/' -r -c 'systemd Userspace OOM Killer' -g 995 -u 995 -s '/usr/sbin/nologin' -M -d '/' systemd-oom ; \
     sed -i "/sgx/d" /mnt/sys-root/etc/group- ; \
     sed -i "/sgx/d" /mnt/sys-root/etc/gshadow- ; \
-    sed -i '/^ID=/a\ID_LIKE="rhel centos fedora"' /mnt/sys-root/etc/os-release ; \
+    sed -i 's/ID_LIKE="opencloudos"/ID_LIKE="rhel centos fedora"/g' /mnt/sys-root/etc/os-release ; \
     cd /mnt/sys-root/etc ; \
-    ln -s ../usr/share/zoneinfo/UTC localtime ;
+    ln -s ../usr/share/zoneinfo/UTC localtime ; \
+    mkdir -p /mnt/sys-root/etc/systemd/system ; \
+    cd /mnt/sys-root/etc/systemd/system ; \
+    ln -s /usr/lib/systemd/system/multi-user.target default.target
 
-ADD anolis-crb.repo /mnt/sys-root/etc/yum.repos.d/
 # RUN systemd-tmpfiles --root=/mnt/sys-root --create /usr/lib/tmpfiles.d/rootfiles.conf
 
-# Almalinux default build
-FROM scratch AS stage2
-COPY --from=system-build /mnt/sys-root/ /
-
-RUN systemctl set-default multi-user.target; \
-    systemctl mask systemd-remount-fs.service \
-    dev-hugepages.mount \
-    sys-fs-fuse-connections.mount \
-    systemd-logind.service \
-    getty.target \
-    console-getty.service
-
+# OpenCloudOS minimal build
 FROM scratch
-COPY --from=stage2 / /
-
-ENV LANG=C.utf8
+COPY --from=system-build /mnt/sys-root/ /
 
 CMD ["/bin/bash"]
