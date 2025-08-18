@@ -1,0 +1,8 @@
+Tags: {{ .tags }}
+GitFetch: refs/heads/{{ .version_major }}
+GitCommit: {{ .commit_hash }}
+amd64-Directory: {{ .image_type }}/amd64/
+arm64v8-Directory: {{ .image_type }}/arm64/
+loong64-Directory: {{ .image_type }}/loong64/
+riscv64-Directory: {{ .image_type }}/riscv64/
+Architectures: amd64, arm64v8, loong64, riscv64
