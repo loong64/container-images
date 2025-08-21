@@ -83,7 +83,7 @@ env:
 
   # Registries lists
   registries_production: 'ghcr.io/loong64'
-  registries_testing: 'ghcr.io/loong64'
+  registries_testing: 'ghcr.io/loong64/autobot'
 
 
 jobs:
@@ -176,7 +176,7 @@ jobs:
           #   255 - workflow_dispatch run
           check_update=0
           podman run --quiet --rm ghcr.io/loong64/opencloudos:${{ matrix.version_major }} \
-            dnf check-update --secseverity=Important || \
+            dnf check-update --secseverity=Important -y || \
             check_update=$?
           [[ "${{ github.event_name }}" == "workflow_dispatch" ]] && \
             check_update=255
@@ -538,6 +538,7 @@ jobs:
           MATTERMOST_CHANNEL: ${{ vars.MATTERMOST_CHANNEL }}
           MATTERMOST_USERNAME: ${{ github.triggering_actor }}
           TEXT: ${{ env.MATTERMOST_TEXT }}
+        continue-on-error: true
 
   optimize-repo-size:
     # 'default' or 'minimal' images only and 'Push to production' is checked or scheduled run

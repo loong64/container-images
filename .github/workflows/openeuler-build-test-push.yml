@@ -82,7 +82,7 @@ env:
 
   # Registries lists
   registries_production: 'ghcr.io/loong64'
-  registries_testing: 'ghcr.io/loong64'
+  registries_testing: 'ghcr.io/loong64/autobot'
 
 
 jobs:
@@ -535,6 +535,7 @@ jobs:
           MATTERMOST_CHANNEL: ${{ vars.MATTERMOST_CHANNEL }}
           MATTERMOST_USERNAME: ${{ github.triggering_actor }}
           TEXT: ${{ env.MATTERMOST_TEXT }}
+        continue-on-error: true
 
   optimize-repo-size:
     # 'default' or 'minimal' images only and 'Push to production' is checked or scheduled run
