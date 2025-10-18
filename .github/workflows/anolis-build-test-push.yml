@@ -149,6 +149,18 @@ jobs:
       production: ${{ needs.init-data.outputs.production }}
 
     steps:
+      - 
+        name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: false
+          swap-storage: false
+
       -
         name: Prepare Anolis OS Minor version number
         run: |
