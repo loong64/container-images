@@ -1,0 +1,614 @@
+name: Build, test and push Kylin to the Client Library
+
+on:
+  workflow_dispatch:
+      inputs:
+        production:
+          description: |
+            'Push to production registries'
+            'not checked - to testing'
+          required: true
+          type: boolean
+          default: false
+
+        notify_mattermost:
+          description: 'Send notification to Mattermost'
+          required: true
+          type: boolean
+          default: false
+
+        version_major:
+          description: 'Kylin major version'
+          required: true
+          default: '11'
+          type: choice
+          options:
+            - 11
+
+        type_default:
+          description: 'default'
+          required: true
+          type: boolean
+          default: true
+
+        type_minimal:
+          description: 'minimal'
+          required: true
+          type: boolean
+          default: true
+
+        type_micro:
+          description: 'micro'
+          required: true
+          type: boolean
+          default: true
+
+        type_base:
+          description: 'base'
+          required: true
+          type: boolean
+          default: true
+
+        type_init:
+          description: 'init'
+          required: true
+          type: boolean
+          default: true
+
+        type_toolbox:
+          description: 'toolbox'
+          required: true
+          type: boolean
+          default: true
+
+  schedule:
+    # run every day at 04:00 UTC
+    - cron:  '00 04 * * *'
+
+env:
+  # List of versions to build on schedule
+  # TODO: add 10 when it is released
+  # Kitten should not be built on schedule
+  versions_list: '"11"'
+
+  # List image types to build on schedule
+  image_types: '"default", "minimal", "micro", "base", "init", "toolbox"'
+
+  # Latest version
+  version_latest: 11
+
+  # Platforms list
+  platforms: 'linux/amd64, linux/arm64, linux/loong64'
+
+  # Registries lists
+  registries_production: 'ghcr.io/loong64'
+  registries_testing: 'ghcr.io/loong64/autobot'
+
+
+jobs:
+  init-data:
+    name: Set matrix, prepare variables
+    runs-on: ubuntu-24.04
+    outputs:
+      version_major_matrix: ${{ steps.init-data.outputs.version_major_matrix }}
+      image_types_matrix: ${{ steps.init-data.outputs.image_types_matrix }}
+      production: ${{ steps.init-data.outputs.production }}
+      notify_mattermost: ${{ steps.init-data.outputs.notify_mattermost }}
+      date_time_stamp: ${{ steps.init-data.outputs.date_time_stamp }}
+      date_stamp: ${{ steps.init-data.outputs.date_stamp }}
+      time_stamp: ${{ steps.init-data.outputs.time_stamp }}
+
+    steps:
+      - name: Set matrix, prepare variables
+        id: init-data
+        run: |
+          # Set matrix, prepare variables
+          case ${{ github.event_name }} in
+            workflow_dispatch)
+              # Set image types matrix based on boolean inputs.type_* with true value
+              echo "image_types_matrix=$(jq -c <<< '[${{ format('"{0}", "{1}", "{2}", "{3}", "{4}", "{5}"', ( inputs.type_default && 'default' ), ( inputs.type_minimal && 'minimal' ), ( inputs.type_micro && 'micro' ), ( inputs.type_base && 'base' ), ( inputs.type_init && 'init' ), ( inputs.type_toolbox && 'toolbox' ) ) }}]')" >> $GITHUB_OUTPUT
+              echo "version_major_matrix=$(jq -c <<< '["${{ inputs.version_major }}"]')" >> $GITHUB_OUTPUT
+              echo "production=${{ inputs.production }}" >> $GITHUB_OUTPUT
+              echo "notify_mattermost=${{ inputs.notify_mattermost }}" >> $GITHUB_OUTPUT
+              ;;
+            schedule)
+              # Set image types matrix based on the environment variable image_types: '"type1", "type2"'
+              echo "image_types_matrix=$(jq -c <<< '[${{ env.image_types }}]')" >> $GITHUB_OUTPUT
+              echo "version_major_matrix=$(jq -c <<< '[${{ env.versions_list }}]')" >> $GITHUB_OUTPUT
+              echo "production=false" >> $GITHUB_OUTPUT       # only testing if scheduled
+              echo "notify_mattermost=true" >> $GITHUB_OUTPUT # always notify if scheduled
+              ;;
+          esac
+
+          # date and time stamps
+          date_time_stamp=$(date -u '+%Y%m%d%H%M%S')
+          date_stamp=${date_time_stamp:0:-6}
+          time_stamp=${date_time_stamp:8}
+          time_stamp="${time_stamp:0:2}:${time_stamp:2:2}:${time_stamp:4:2}"
+
+          echo "date_time_stamp=${date_time_stamp}" >> "$GITHUB_OUTPUT"
+          echo "date_stamp=${date_stamp}" >> "$GITHUB_OUTPUT"
+          echo "time_stamp=${time_stamp}" >> "$GITHUB_OUTPUT"
+
+  build-test-push:
+    name: Deploy ${{ matrix.version_major }} ${{ matrix.image_types }} images
+    runs-on: ubuntu-24.04
+    needs: [init-data]
+    strategy:
+      fail-fast: false
+      matrix:
+        version_major: ${{ fromJSON(needs.init-data.outputs.version_major_matrix) }}
+        image_types: ${{ fromJSON(needs.init-data.outputs.image_types_matrix) }}
+        exclude:
+          - image_types: 'false'
+    env:
+      date_time_stamp: ${{ needs.init-data.outputs.date_time_stamp }}
+      date_stamp: ${{ needs.init-data.outputs.date_stamp }}
+      time_stamp: ${{ needs.init-data.outputs.time_stamp }}
+      notify_mattermost: ${{ needs.init-data.outputs.notify_mattermost }}
+      production: ${{ needs.init-data.outputs.production }}
+
+    steps:
+      - 
+        name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: false
+          docker-images: false
+          swap-storage: false
+
+      -
+        name: Prepare Kylin Minor version number
+        run: |
+          case ${{ matrix.version_major }} in
+            11)
+              version_minor= ;;
+            *)
+              echo "Kylin ${{ matrix.version_major }} is not supported!" && false
+          esac
+          echo "version_minor=${version_minor}" >> $GITHUB_ENV
+
+      -
+        name: Check update
+        id: check-update
+        run: |
+          # dnf check-update --secseverity=Important
+          # exit codes:
+          #   0 - no updates
+          #   100 - updates available
+          #   125 - tag not found
+          #   127 - command not found
+          #   255 - workflow_dispatch run
+          check_update=0
+          podman run --quiet --rm ghcr.io/loong64/kylin:${{ matrix.version_major }} \
+            dnf check-update --secseverity=Important || \
+            check_update=$?
+          [[ "${{ github.event_name }}" == "workflow_dispatch" ]] && \
+            check_update=255
+
+          echo "check_update=${check_update}" >> "$GITHUB_ENV"
+          echo "Exit code: '$check_update'"
+
+      -
+        name: Set platforms and registries
+        if: env.check_update != 0
+        run: |
+            # Platforms
+            platforms="${{ env.platforms }}"
+            echo "platforms=${platforms}" >> $GITHUB_ENV
+
+            # Registries
+            registries="${{ env.registries_testing }}"
+            [[ "${{ needs.init-data.outputs.production }}" == "true" ]] && \
+              registries="${{ env.registries_production }}"
+            echo "registries=${registries}" >> $GITHUB_ENV
+
+      -
+        name: Generate list of images to use as base name for tags
+        if: env.check_update != 0
+        run: |
+          # list of registries to push to
+          REGISTRIES="${{ env.registries }}"
+
+          IMAGE_NAMES=
+          # generate image names in format $REGISTRY/kylin or $REGISTRY/${{ matrix.version_major }}-${{ matrix.image_types }}
+          # image names are used by docker/metadata-action to set 'images'
+          for REGISTRY in ${REGISTRIES//,/ }; do
+            IMAGE_NAME="$REGISTRY/kylin"
+            IMAGE_NAMES="${IMAGE_NAMES} ${IMAGE_NAME}"
+            unset IMAGE_NAME
+          done
+
+          # remove space at the beginning of string
+          IMAGE_NAMES=${IMAGE_NAMES# }
+          # separate with comma instead of space and export to the action
+          echo "IMAGE_NAMES=${IMAGE_NAMES// /,}" >> $GITHUB_ENV
+
+          # [Debug]
+          echo $IMAGE_NAMES
+
+      -
+        name: Enable containerd image store on Docker Engine
+        if: env.check_update != 0
+        run: |
+          # JQ file to switch into containerd image store
+          cat << EOF > containerd-snapshotter.jq
+          .features |= . + { "containerd-snapshotter": true }
+          EOF
+          sudo sh -c 'jq -n -f containerd-snapshotter.jq > /etc/docker/daemon.json'
+          sudo systemctl restart docker
+          docker info -f '{{ .DriverStatus }}'
+
+      -
+        name: Checkout ${{ github.repository }}, branch 'main'
+        if: env.check_update != 0
+        uses: actions/checkout@v4
+
+      -
+        name: Checkout ${{ github.repository }}, branch 'kylin-metadata-${{ matrix.version_major }}', path 'kylin-${{ matrix.version_major }}'
+        if: env.check_update != 0
+        uses: actions/checkout@v4
+        with:
+          ref: kylin-metadata-${{ matrix.version_major }}
+          path: kylin-${{ matrix.version_major }}
+
+      -
+        name: Set up QEMU
+        if: env.check_update != 0
+        uses: docker/setup-qemu-action@v3
+      -
+        name: Set up Docker Buildx
+        if: env.check_update != 0
+        uses: docker/setup-buildx-action@v3
+
+      -
+        name: Login to Ghcr.io
+        if: contains(env.registries, 'ghcr.io') && env.check_update != 0
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      -
+        name: Generate tags and prepare metadata to build and push
+        if: env.check_update != 0
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # list of Docker images to use as base names for tags
+          images: ${{ env.IMAGE_NAMES }}
+
+          # list of tags
+          tags: |
+            type=raw,value=latest,enable=${{ matrix.image_types == 'default' && matrix.version_major == env.version_latest }}
+            type=raw,value=${{ matrix.image_types }},enable=${{ matrix.version_major == env.version_latest }}
+            type=raw,value=${{ matrix.version_major }},enable=${{ matrix.image_types == 'default' }}
+            type=raw,value=${{ matrix.version_major }}-${{ matrix.image_types }},enable=true
+            type=raw,value=${{ matrix.version_major }}${{ env.version_minor }}-${{ matrix.image_types }},enable=true
+            type=raw,value=${{ matrix.version_major }}${{ env.version_minor }}-${{ matrix.image_types }}-${{ env.date_stamp }},enable=true
+
+      -
+        name: Build images
+        if: env.check_update != 0
+        id: build-images
+        uses: docker/build-push-action@v5
+        with:
+          provenance: false
+          context: "{{defaultContext}}:Kylin/Containerfiles/${{ matrix.version_major }}"
+          file: ./Containerfile.${{ matrix.image_types }}
+          platforms: ${{ env.platforms }}
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+
+      -
+        name: Test images
+        if: env.check_update != 0
+        id: test-images
+        run: |
+          # [Test]
+          platforms="${{ env.platforms }}"
+          for platform in ${platforms//,/ }; do
+            echo "Testing Kylin ${{ matrix.version_major }} ${{ matrix.image_types }} for ${platform} image:"
+
+            # TODO: machine hardware name is x86_64 on linux/386 platform
+            docker run --platform=${platform} ${{ steps.build-images.outputs.digest }} /bin/bash -c " \
+            uname -m \
+            && cat /etc/kylin-release \
+            && ( test "${{ matrix.image_types }}" != "micro" && rpm -q gpg-pubkey) || true "
+          done
+
+      -
+        name: Push images to Client Library
+        if: env.check_update != 0
+        id: push-images
+        uses: docker/build-push-action@v5
+        with:
+          provenance: false
+          context: "{{defaultContext}}:Kylin/Containerfiles/${{ matrix.version_major }}"
+          file: ./Containerfile.${{ matrix.image_types }}
+          platforms: ${{ env.platforms }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+
+      -
+        name: Prepare Mattermost message
+        if: env.check_update != 0
+        run: |
+          # Mattermost message heading
+          cat << 'EOF'> ${{ matrix.version_major }}_mattermost.md
+          **Kylin OS ${{ matrix.version_major }}${{ env.version_minor }}** Container Image, build `${{ needs.init-data.outputs.date_time_stamp }}`, generated by the [GitHub Action](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+          Platforms:
+
+          ```
+          ${{ env.platforms }}
+          ```
+
+          EOF
+
+          # Mattermost message body
+          cat << 'EOF'> ${{ matrix.version_major }}_${{ matrix.image_types }}_mattermost.md
+
+          :kylin: **${{ matrix.image_types }}**
+
+          ```
+          ${{ steps.meta.outputs.tags }}
+          ```
+          EOF
+
+      - name: Upload Mattermost message artifacts
+        uses: actions/upload-artifact@v4
+        if: env.check_update != 0
+        with:
+          name: mattermost-message-${{ matrix.version_major }}-${{ matrix.image_types }}
+          path: ${{ matrix.version_major }}*_mattermost.md
+
+      -
+        name: Extract RootFS (default and minimal only)
+        id: extract-rootfs
+        # 'default' or 'minimal' images only go to Docker Official Library
+        if: ( matrix.image_types == 'default' || matrix.image_types == 'minimal' ) && env.check_update != 0
+        run: |
+          # [RootFS]
+
+          # File name for RootFS file (packed with tag + Xz)
+          name=kylin-${{ matrix.version_major }}-${{ matrix.image_types }}
+          pwd=$( pwd )
+          path=${pwd}/${name}
+          kylin_release='kylin-release'
+
+          # The "tar file" for 'docker save' to write to
+          tar_name=${pwd}/${name}.tar
+
+          mkdir ${path}
+          cd ${path}
+
+          # Produce a tarred repository and save it to the "tar file".
+          docker save ${{ steps.build-images.outputs.digest }} -o ${tar_name}
+
+          # Extract the "tar file"
+          tar xf ${tar_name}
+          cd blobs/sha256
+
+          # The "temporary Dockerfile" to build image based on RootFS
+          cat <<EOF > Dockerfile
+          FROM scratch
+          ADD rootfs.tar.gz /
+          CMD ["/bin/bash"]
+          EOF
+
+          # Loop blobs to find all zipped files that are RootFS for a particular architecture
+          for file in `find . -type f`; do
+            if file --brief ${file} | grep -i gzip >/dev/null; then
+              # Make a copy of "taken RootFS"
+              cp -av ${file} rootfs.tar.gz
+
+              # Build an image from the "temporary Dockerfile"
+              docker build -t rootfs .
+
+              # Run the image and query kylin-release package's architecture
+              arch=$( docker run --rm rootfs /bin/bash -c "rpm -q --qf=%{ARCH} ${kylin_release}" )
+
+              # Map found architecture to the corresponding platform
+              platform=
+              docker rmi rootfs
+              case ${arch} in
+                i686)
+                  platform=386;;
+                x86_64)
+                  platform=amd64;;
+                x86_64_v2)
+                  platform=amd64_v2;;
+                ppc64le)
+                  platform=ppc64le;;
+                s390x)
+                  platform=s390x;;
+                aarch64)
+                  platform=arm64;;
+                loongarch64)
+                  platform=loong64;;
+                riscv64)
+                  platform=riscv64;;
+                *)
+                  echo "The '$arch' is incorrect or failed to determine architecture." && false;;
+              esac
+
+              # Delete copy of the "taken RootFS"
+              rm -f rootfs.tar.gz
+
+              # Copy the "taken RootFS" into corresponded .tar.xz
+              cp -av ${file} ${name}-${platform}.tar.gz
+              zcat ${name}-${platform}.tar.gz | xz -9 -e -T0 > ${pwd}/kylin-${{ matrix.version_major }}/${{ matrix.image_types }}/${platform}/${name}-${platform}.tar.xz
+
+            fi
+          done
+
+          # Clean up
+          rm -rf ${path}
+
+          echo "[Debug]"
+          ls -1 ${pwd}/kylin-${{ matrix.version_major }}/${{ matrix.image_types }}/*/*.tar.xz
+
+      # Change date stamp in '${version_major}/${image_types}/${arch}/Dockerfile'
+      -
+        name: Change date stamp in Dockerfile (default and minimal only)
+        # 'default' or 'minimal' images only go to Docker Official Library
+        if: ( matrix.image_types == 'default' || matrix.image_types == 'minimal' ) && env.check_update != 0
+        run: |
+          # [Dockerfile]
+
+          platforms="${{ env.platforms }}"
+          for platform in ${platforms//,/ }; do
+            arch=${platform#linux/}
+            arch=${arch/\//_}
+            dockerfile=kylin-${{ matrix.version_major }}/${{ matrix.image_types }}/${arch}/Dockerfile
+
+            case ${{ matrix.image_types }} in
+              default)
+                tags="${{ matrix.version_major }}${{ env.version_minor }}, ${{ matrix.version_major }}${{ env.version_minor }}-${{ env.date_stamp }}"
+                tags="${{ matrix.version_major }}, ${tags}"
+                [ "${{ matrix.version_major }}" = "${{ env.version_latest }}" ] && tags="latest, ${tags}" ;;
+              minimal)
+                tags="${{ matrix.version_major }}${{ env.version_minor }}-${{ matrix.image_types }}, ${{ matrix.version_major }}${{ env.version_minor }}-${{ matrix.image_types }}-${{ env.date_stamp }}"
+                tags="${{ matrix.version_major }}-${{ matrix.image_types }}, ${tags}"
+                [ "${{ matrix.version_major }}" = "${{ env.version_latest }}" ] && tags="minimal, ${tags}" ;;
+              *)
+            esac
+
+            # Tags: 8, 8.9, 8.9-20231124
+            sed -i "/^\([[:space:]]*#[[:space:]]*Tags: \).*/s//\1${tags}/" ${dockerfile}
+
+            echo "[Debug] ${dockerfile}"
+            cat ${dockerfile}
+          done
+
+      # Commit 'kylin-${version_major}/${image_types}/${arch}/*'
+      -
+        name: "Commit and push ${{ matrix.image_types }}/*/* Dockerfile and RootFS (branch kylin-${{ matrix.version_major }})"
+        # 'default' or 'minimal' images only and 'Push to production' is checked
+        if: ( matrix.image_types == 'default' || matrix.image_types == 'minimal' ) && env.production == 'true' && env.check_update != 0
+        uses: EndBug/add-and-commit@v9
+        with:
+          default_author: user_info
+          new_branch: kylin-${{ matrix.version_major }}
+          cwd: kylin-${{ matrix.version_major }}
+          message: "Kylin ${{ matrix.version_major }} ${{ matrix.image_types }} - ${{ env.date_stamp }} ${{ env.time_stamp }} (generated on ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          push: 'origin kylin-${{ matrix.version_major }} --set-upstream --force'
+
+  notify-mattermost:
+    name: Mattermost notification
+    runs-on: ubuntu-24.04
+    needs: [init-data, build-test-push]
+    if: needs.init-data.outputs.notify_mattermost == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        version_major: ${{ fromJSON(needs.init-data.outputs.version_major_matrix) }}
+
+    steps:
+      - name: Download Mattermost message artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create Mattermost message
+        run: |
+          # Artifacts are downloaded into mattermost-message-${{ matrix.version_major }}-* directory
+          # Find any ${{ matrix.version_major }}_mattermost.md over all image types and copy it to the current directory
+          # If no such file found, set notify_mattermost to false and exit (no notification will be sent)
+          # If found, set MATTERMOST_TEXT environment variable with complete message
+          notify_mattermost=true
+          mattermost_md=$(ls -1 mattermost-message-${{ matrix.version_major }}-*/${{ matrix.version_major }}_mattermost.md 2>/dev/null | head -1)
+          if [ -f "${mattermost_md}" ]; then
+            cp -av "${mattermost_md}" .
+          else
+            notify_mattermost=false
+          fi
+          echo "notify_mattermost=${notify_mattermost}" >> $GITHUB_ENV
+          [ "${notify_mattermost}" = "false" ] && exit 0
+
+          # MATTERMOST_TEXT environment variable with complete message
+          {
+            echo 'MATTERMOST_TEXT<<EOF'
+            cat ${{ matrix.version_major }}_mattermost.md
+            cat mattermost-message-${{ matrix.version_major }}-*/${{ matrix.version_major }}_*_mattermost.md
+            echo EOF
+          } >> "$GITHUB_ENV"
+
+      - name: Send notification to Mattermost
+        if: env.notify_mattermost == 'true'
+        uses: mattermost/action-mattermost-notify@master
+        with:
+          MATTERMOST_WEBHOOK_URL: ${{ secrets.MATTERMOST_WEBHOOK_URL }}
+          MATTERMOST_CHANNEL: ${{ vars.MATTERMOST_CHANNEL }}
+          MATTERMOST_USERNAME: ${{ github.triggering_actor }}
+          TEXT: ${{ env.MATTERMOST_TEXT }}
+        continue-on-error: true
+
+  optimize-repo-size:
+    # 'default' or 'minimal' images only and 'Push to production' is checked or scheduled run
+    if: ( contains(needs.init-data.outputs.image_types_matrix, 'default') || contains(needs.init-data.outputs.image_types_matrix, 'minimal') ) && needs.init-data.outputs.production == 'true'
+    name: Optimize size of repository, branch 'kylin-${{ matrix.version_major }}'
+    runs-on: ubuntu-24.04
+    needs:
+      - init-data
+      - build-test-push
+    strategy:
+      fail-fast: false
+      matrix:
+        version_major: ${{ fromJSON(needs.init-data.outputs.version_major_matrix) }}
+
+    steps:
+
+      -
+        name: Checkout ${{ github.repository }}, branch 'kylin-${{ matrix.version_major }}', path 'kylin-${{ matrix.version_major }}'
+        uses: actions/checkout@v4
+        with:
+          ref: kylin-${{ matrix.version_major }}
+          path: kylin-${{ matrix.version_major }}
+
+      -
+        name: Optimize size of branch the 'kylin-${{ matrix.version_major }}'
+        run: |
+          date_stamp=${{ needs.init-data.outputs.date_stamp }}
+          cd kylin-${{ matrix.version_major }}
+
+          echo "Prepare new branch 'tmp' based on kylin-${{ matrix.version_major }}"
+          git checkout -b tmp
+
+          echo "Delete local branch 'kylin-${{ matrix.version_major }}'"
+          git branch -D kylin-${{ matrix.version_major }}
+
+          echo "Preserve resent data"
+          mkdir ../tmp-${date_stamp}
+
+          mv ./default ../tmp-${date_stamp}/
+          mv ./minimal ../tmp-${date_stamp}/
+
+          echo "Crete orphan branch 'kylin-${{ matrix.version_major }}'"
+          git checkout --orphan kylin-${{ matrix.version_major }}
+
+          echo "Clean up"
+          git rm --cached -r .
+          rm -rf ./default
+          rm -rf ./minimal
+
+          echo "Restore resent data"
+          mv ../tmp-${date_stamp}/default ./
+          mv ../tmp-${date_stamp}/minimal ./
+
+          echo "[Debug]"
+          git status
+
+      -
+        name: Commit and push ${{ github.repository }}, branch 'kylin-${{ matrix.version_major }}'
+        uses: EndBug/add-and-commit@v9
+        with:
+          default_author: user_info
+          message: "Update Kylin ${{ matrix.version_major }} - ${{ needs.init-data.outputs.date_stamp }} ${{ needs.init-data.outputs.time_stamp }} (generated on ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+          push: '--force --set-upstream origin kylin-${{ matrix.version_major }}'
+          cwd: kylin-${{ matrix.version_major }}
