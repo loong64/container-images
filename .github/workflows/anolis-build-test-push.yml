@@ -166,7 +166,7 @@ jobs:
         run: |
           case ${{ matrix.version_major }} in
             23)
-              version_minor=".3" ;;
+              version_minor=".4" ;;
             *)
               echo "Anolis OS ${{ matrix.version_major }} is not supported!" && false
           esac
