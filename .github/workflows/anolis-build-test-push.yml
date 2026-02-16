@@ -78,7 +78,7 @@ env:
   version_latest: 23
 
   # Platforms list
-  platforms: 'linux/amd64, linux/arm64, linux/loong64, linux/riscv64'
+  platforms: 'linux/amd64, linux/arm64, linux/loong64'
 
   # Registries lists
   registries_production: 'ghcr.io/loong64'
