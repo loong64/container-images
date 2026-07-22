@@ -20,10 +20,10 @@ RUN mkdir /mnt/sys-root; \
     krb5-libs \
     less \
     libcurl-minimal \
+    python3-dnf-plugins-core \
     rootfiles \
     systemd \
     tar \
-    util-linux \
     vim-minimal \
     yum \
     xz \

@@ -26,7 +26,6 @@ RUN mkdir /mnt/sys-root; \
     systemd \
     tar \
     usermode \
-    util-linux \
     vim-minimal \
     virt-what \
     yum \

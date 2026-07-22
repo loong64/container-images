@@ -15,7 +15,6 @@ RUN mkdir /mnt/sys-root; \
     libcurl-minimal \
     libusbx \
     microdnf \
-    util-linux \
     rootfiles \
     ; \
     echo '%_install_langs en_US.UTF-8' > /etc/rpm/macros.image-language-conf ;\

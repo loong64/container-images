@@ -19,7 +19,6 @@ RUN mkdir -p /mnt/sys-root; \
     systemd \
     tar \
     usermode \
-    util-linux \
     vim-minimal \
     virt-what \
     yum \
@@ -32,7 +31,7 @@ RUN mkdir -p /mnt/sys-root; \
     --nodocs \
     krb5-libs ; \
     dnf --installroot /mnt/sys-root clean all;
-# Additional hacks for kickstart file and backward compatible support
+# Additional hacks for kickstart file and backward compatibae support
 RUN rm -rf /mnt/sys-root/var/log/dnf* /mnt/sys-root/var/log/yum.* /mnt/sys-root/var/cache/dnf/* /mnt/sys-root/var/lib/dnf/repos; \
     rm -rf /mnt/sys-root/var/log/hawkey.log /mnt/sys-root/boot /mnt/sys-root/dev/null /mnt/sys-root/var/log/*  /mnt/sys-root/run/blkid ; \
     mkdir -p /mnt/sys-root/run/lock; \
